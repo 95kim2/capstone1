@@ -1,0 +1,179 @@
+//<data.js> api로부터 데이터베이스에 저장
+request = require('request');  
+express = require('express'); 
+app = express(); 
+
+ 
+mysql = require('mysql'); 
+connection = mysql.createConnection({ 
+    host: 'localhost', 
+    user: 'user1', 
+    password: 'user11', 
+    database: 'weather' 
+}) 
+connection.connect(); 
+ 
+ 
+function insert_dogok(tmp, time) {
+    table = {}
+    table.temperature = tmp
+    table.time = time
+    
+    query = connection.query('insert into dogok set ?', table, function(err, rows, cols) { 
+        if (err) throw err
+        console.log("database insertion ok= %j", table)
+    }); 
+} 
+
+function interval(){
+    moment = require('moment')
+    require('moment-timezone')
+    moment.tz.setDefault("Asia/Seoul");
+    date = moment().format('YYYY-MM-DD HH:mm:ss')
+
+    serviceKey = 'Qn713AqsL%2BWIOgmgYhwquZ8dst48Jitsv7YZTIUFZ6Da9BY%2BoZH6A%2BfE9JDPs8wG6%2FB2HZshuDC%2FZTQuyp70dA%3D%3D'
+    list = date.split(' ')[0].split('-')
+    base_date = '' + list[0]+list[1]+list[2]
+    list = date.split(' ')[1].split(':')
+    base_time = ''+list[0]+list[1]
+    nx = 61
+    ny = 125
+
+    url = 'http://apis.data.go.kr/1360000/VilageFcstInfoService/getUltraSrtNcst'
+    url += '?serviceKey=' + serviceKey + '&pageNo=1&numOfRows=10&dataType=XML'
+    url += '&base_date='+base_date + '&base_time='+base_time
+    url +='&nx='+nx+'&ny='+ny
+
+    request(url, function(err, res, body) {
+
+        if (err) {
+            console.log(err);
+            return;
+        }
+    
+        idx = body.indexOf("T1H")
+        body = body.substring(idx, body.length-1)
+        idx = body.indexOf("obsrValue")
+        body = body.substring(idx+10, body.length-1)
+        idx = body.indexOf("obsrValue")
+        body = body.substring(0, idx-2)   
+        
+        console.log(body + ' ' + date)
+
+        insert_dogok(body, date)
+    });
+}
+
+setInterval(interval, 600000)
+
+ var server = app.listen(6000, function () { 
+   var host = server.address().address 
+   var port = server.address().port 
+   console.log('listening at http://%s:%s', host, port) 
+ }); 
+ 
+ // <graph.html> 그래프 양식
+ <html>
+ <head>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+     <script type="text/javascript">
+      google.charts.load('current', {'packages':['line']});
+       google.charts.setOnLoadCallback(drawChart);
+
+
+     function drawChart() {
+
+
+      var data = new google.visualization.DataTable();
+       <%HEADER%>
+       data.addRows([
+         <%DATA%>
+       ]);
+
+
+       var options = {
+         chart: {
+           title: 'Temperature',
+           subtitle: 'dogok-dong'
+           },
+         width: 1024,
+        height: 512,
+        axes: {
+           x: {
+             0: {side: 'bottom'}
+           }
+         }
+       };
+
+
+       var chart = new google.charts.Line(document.getElementById('line_top_x'));
+       chart.draw(data, google.charts.Line.convertOptions(options));
+     }
+  </script>
+ </head>
+ <body>
+   <div id="line_top_x"></div>
+ </body>
+ </html>
+ 
+ // <draw.js> 그래프 html에 데이터를 삽입
+ express = require('express') 
+app = express() 
+fs = require('fs'); 
+mysql = require('mysql'); 
+connection = mysql.createConnection({ 
+    host: 'localhost', 
+    user: 'user1', 
+    password: 'user11', 
+    database: 'weather' 
+}) 
+ connection.connect();  
+ 
+ app.get('/graph', function (req, res) { 
+     console.log('got app.get(graph)'); 
+     var html = fs.readFile('./graph.html', function (err, html) { 
+     html = " "+ html 
+     console.log('read file'); 
+ 
+ 
+    qstr = 'select * from dogok '; 
+    connection.query(qstr, function(err, rows, cols) { 
+        if (err) throw err;
+        data = ""
+        comma = "" 
+        for (i=0; i< rows.length; i++) { 
+            r = rows[i];
+       
+            list = r.time.split(' ')[0].split('-')
+            y = ""+list[0]
+            mth = ""+list[1]
+            d = ""+list[2]        
+            
+            list = r.time.split(' ')[1].split(':')
+            h = ""+list[0]
+            min = ""+list[1]
+
+
+
+            data += comma + "[new Date("+ y +","+ mth +","+ d +"," + h +","+ min +"),"+ r.temperature +"]"
+            comma = ","
+       } 
+       header = "data.addColumn('date', 'Date/Time');" 
+       header += "data.addColumn('number', 'Temperature');" 
+       html = html.replace("<%HEADER%>", header); 
+       html = html.replace("<%DATA%>", data); 
+
+ 
+      res.writeHeader(200, {"Content-Type": "text/html"}); 
+       res.write(html); 
+       res.end(); 
+     }); 
+   }); 
+ }) 
+ 
+ 
+ var server = app.listen(4000, function () { 
+   var host = server.address().address 
+   var port = server.address().port 
+   console.log('listening at http://%s:%s', host, port) 
+ }); 
